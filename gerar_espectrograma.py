@@ -44,7 +44,7 @@ import os
 import glob
 
 # Execução do script
-audio_entrada = 'som3.wav'
+audio_entrada = 'audios/som3.wav'
 
 # Cria a pasta de resultados se não existir
 pasta_resultados = 'resultados'
