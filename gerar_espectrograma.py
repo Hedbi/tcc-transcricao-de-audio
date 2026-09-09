@@ -3,7 +3,7 @@ import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
 
-def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida):
+def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
     # 1. Carregamento do áudio
     # sr=22050 é a taxa de amostragem padrão e suficiente para guitarra
     y, sr = librosa.load(caminho_audio, sr=22050)
@@ -16,6 +16,10 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida):
     # 3. Conversão de Amplitude para Decibéis
     # O ouvido humano percebe o som em escala logarítmica (dB)
     espectrograma_db = librosa.amplitude_to_db(np.abs(cqt_bruto), ref=np.max)
+    
+    # 3.1 Limiarização em Decibéis (Noise Gate / Limpeza de eco e ruído de fundo)
+    if limiar_db is not None:
+        espectrograma_db[espectrograma_db < limiar_db] = -80
     
     # 4. Geração e Formatação da Imagem
     plt.figure(figsize=(12, 6))
@@ -44,10 +48,11 @@ import os
 import glob
 
 # Execução do script
-audio_entrada = 'audios/som3.wav'
+diretorio_base = os.path.dirname(os.path.abspath(__file__))
+audio_entrada = os.path.join(diretorio_base, 'audios', 'som2.wav')
 
 # Cria a pasta de resultados se não existir
-pasta_resultados = 'resultados'
+pasta_resultados = os.path.join(diretorio_base, 'resultados')
 os.makedirs(pasta_resultados, exist_ok=True)
 
 # Descobre o próximo número de resultado
