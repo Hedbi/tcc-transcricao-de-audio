@@ -17,13 +17,14 @@ import numpy as np
 # morfológico que serão aplicadas sobre a Máscara Binária.
 # Referência: Gonzalez & Woods, "Processamento Digital de Imagens", Cap. 9.
 # -----------------------------------------------------------------------------
-from scipy.ndimage import binary_closing, binary_opening
+from scipy.ndimage import binary_closing, binary_opening, label, find_objects
 
 # BIBLIOTECAS DE ÁUDIO E VISUALIZAÇÃO
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.patches as patches
 
 
 # =============================================================================
@@ -131,71 +132,136 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
     # ETAPA 5: POLIMENTO DA MÁSCARA (Morfologia Matemática)
     # =========================================================================
     # Apesar do limiar já filtrar boa parte do ruído, a máscara bruta ainda
-    # apresenta dois problemas visuais/computacionais:
-    # A) Notas longas têm pequenos "buracos" no meio (descontinuidades).
-    # B) Existem "ilhas" de pixels isolados que são estalos ou ruído elétrico.
-    # A Morfologia Matemática resolve ambos com dois operadores clássicos.
+    # apresenta dois problemas acustico-visuais criticos:
+    # A) O transiente de palhetada (ataque) gera uma barra vertical de banda larga
+    #    que toca todos os harmonicos, atuando como uma "ponte" indesejada.
+    # B) O vibrato natural e decaimento da nota causam pequenos buracos horizontais.
+    # A Morfologia Matematica resolve ambos com operadores direcionais.
 
     # =========================================================================
-    # OPERAÇÃO 5.1: FECHAMENTO MORFOLÓGICO (Binary Closing)
+    # OPERACAO 5.1: ABERTURA HORIZONTAL (Desacoplamento de Transientes)
     # =========================================================================
-    # O FECHAMENTO é a composição de DILATAÇÃO seguida de EROSÃO.
-    # Na prática, ele PREENCHE buracos e rachaduras nas manchas brancas (notas)
-    # SEM aumentar o tamanho geral da nota.
-    #
-    # PARÂMETRO CRÍTICO: structure=np.ones((1, 20))  →  Bloco 1 linha × 20 colunas
-    # Justificativa: O elemento estruturante define "qual formato de buraco"
-    # o algoritmo vai tentar preencher. Usamos um bloco HORIZONTAL (1×20)
-    # porque as notas da guitarra formam linhas horizontais no espectrograma
-    # (pitch fixo ao longo do tempo). Um buraco horizontal de até 20 colunas
-    # equivale a uma falha de até 20 × 23ms ≈ 0,46 segundos de duração.
-    # Esse valor foi escolhido para "costurar" falhas causadas pelo tremido
-    # natural de uma nota sustentada (vibrato sutil que cai abaixo do limiar
-    # por frações de segundo), mas NÃO é grande o suficiente para conectar
-    # duas notas distintas separadas por uma pausa real (que tipicamente dura
-    # mais de 0,5s em uma execução normal de guitarra).
-    # Referência: Gonzalez & Woods, "Processamento Digital de Imagens", Cap. 9.
-    mascara_apos_fechamento = binary_closing(mascara_binaria, structure=np.ones((1, 20)))
+    # PARÂMETRO CRITICO: structure=np.ones((1, 5)) -> Bloco 1 linha x 5 colunas
+    # Justificativa: Ao tocar a corda, o atrito da palheta cria um estalo
+    # percussivo vertical que dura apenas 1 a 2 frames (~23 a 46ms). Se
+    # aplicassemos fechamento direto, essa linha vertical fundiria a fundamental
+    # e todos os harmonicos em um unico bloco gigante conectado (formato de pente).
+    # Uma abertura com elemento estritamente horizontal (1x5, duracao >= 115ms)
+    # apaga os transientes verticais curtos e preserva apenas as notas que tem
+    # sustentacao acustica horizontal no tempo.
+    # Referencia: Gonzalez & Woods, "Processamento Digital de Imagens", Cap. 9.
+    mascara_apos_abertura = binary_opening(mascara_binaria, structure=np.ones((1, 5)))
 
     # =========================================================================
-    # OPERAÇÃO 5.2: ABERTURA MORFOLÓGICA (Binary Opening)
+    # OPERACAO 5.2: FECHAMENTO HORIZONTAL (Sustentacao e Vibrato)
     # =========================================================================
-    # A ABERTURA é a composição de EROSÃO seguida de DILATAÇÃO.
-    # Na prática, ela APAGA manchas brancas pequenas e isoladas (ruídos)
-    # SEM encolher as manchas grandes (as notas reais).
-    #
-    # PARÂMETRO CRÍTICO: structure=np.ones((3, 3))  →  Bloco 3×3
-    # Justificativa: Qualquer "ilha" de pixels brancos com menos de 3 colunas
-    # de largura (≈ 69ms) ou menos de 3 linhas de altura (≈ 3 semitons de
-    # espessura) provavelmente não é uma nota musical real — é um estalo de
-    # palheta, interferência elétrica ou artefato da transformada. O bloco
-    # 3×3 foi calibrado para ser pequeno o suficiente para NÃO apagar os
-    # harmônicos superiores mais finos (que têm 1 ou 2 bins de espessura),
-    # mas grande o suficiente para eliminar o chiado pontual.
-    mascara_limpa = binary_opening(mascara_apos_fechamento, structure=np.ones((3, 3)))
+    # PARÂMETRO CRITICO: structure=np.ones((1, 15)) -> Bloco 1 linha x 15 colunas
+    # Justificativa: O fechamento horizontal (1x15 colunas ~ 345ms) une pequenas
+    # quebras na sustentacao da nota sem criar pontes verticais entre notas
+    # de frequencias diferentes. Isso evita que uma nota sustentada seja
+    # contabilizada como dois ataques separados devido a vibratos sutis.
+    mascara_limpa = binary_closing(mascara_apos_abertura, structure=np.ones((1, 15)))
 
     # =========================================================================
-    # ETAPA 6: APLICAÇÃO DA MÁSCARA NO ESPECTROGRAMA ORIGINAL
+    # ETAPA 6: APLICACAO DA MASCARA NO ESPECTROGRAMA ORIGINAL
     # =========================================================================
-    # PONTO-CHAVE: A máscara NÃO modifica os valores de decibéis das notas.
-    # Ela age como um estêncil: onde é 1, o valor original permanece intacto.
-    # Onde é 0, a intensidade é forçada para -80 dB (silêncio visual).
-    # Isso garante que a precisão musical do espectrograma seja preservada.
-    #
-    # A operação np.where funciona como um if-else vetorizado:
-    # - Onde mascara_limpa == 1 → mantém o valor de espectrograma_db
-    # - Onde mascara_limpa == 0 → substitui por -80 dB
+    # A mascara age como um estencil perfeito: onde mascara_limpa == 1,
+    # preservamos a amplitude em dB exata da nota. Onde for 0, forca para -80 dB.
     espectrograma_limpo = np.where(mascara_limpa, espectrograma_db, -80)
 
     # =========================================================================
-    # ETAPA 7: GERAÇÃO DA IMAGEM COMPARATIVA (4 Painéis)
+    # ETAPA 7: DETECCAO DE ONSETS, OFFSETS E PITCH TRACKING (ETAPA 2 DO TCC)
     # =========================================================================
-    # Para fins de análise e apresentação no TCC, geramos um único arquivo
-    # de imagem com quatro painéis que mostram cada etapa da pipeline:
-    # Painel 1: Espectrograma original (sem filtro)
-    # Painel 2: Máscara binária bruta (preto e branco, logo após o limiar)
-    # Painel 3: Máscara polida (após fechamento e abertura morfológica)
-    # Painel 4: Espectrograma final limpo (máscara aplicada sobre os dBs)
+    # Abordagem de Visao Computacional baseada em Componentes Conexos.
+    # Cada "ilha" de pixels brancos na mascara representa um evento acustico
+    # (seja a nota fundamental ou um de seus sobretons harmonicos).
+    rotulado, num_componentes = label(mascara_limpa)
+    fatias_objetos = find_objects(rotulado)
+
+    componentes_validos = []
+    for idx, fatia in enumerate(fatias_objetos):
+        if fatia is None:
+            continue
+        
+        # Filtro de Area: Elimina ruidos residuais ou estalos mecanicos
+        # que tenham duracao e espessura inferiores a 40 pixels.
+        area_px = np.sum(rotulado[fatia] == (idx + 1))
+        if area_px < 40:
+            continue
+
+        fatia_bin, fatia_tempo = fatia
+        t_onset = fatia_tempo.start * 512 / sr
+        t_offset = fatia_tempo.stop * 512 / sr
+        duracao = t_offset - t_onset
+
+        # Extrai o bin de maior intensidade energetica dentro deste componente
+        mascara_comp = (rotulado[fatia] == (idx + 1))
+        dados_comp = np.where(mascara_comp, espectrograma_db[fatia], -120)
+        pico_relativo = np.unravel_index(np.argmax(dados_comp), dados_comp.shape)[0]
+        bin_pico = fatia_bin.start + pico_relativo
+
+        # Conversao do bin CQT para nome da nota musical e frequencia Hz
+        # unicode=False garante compatibilidade de caracteres (# em vez de ♯) no Windows
+        nome_nota = librosa.midi_to_note(librosa.note_to_midi('E2') + bin_pico, unicode=False)
+        freq_hz = librosa.cqt_frequencies(n_bins=84, fmin=nota_mi_grave)[bin_pico]
+
+        componentes_validos.append({
+            'id': idx + 1,
+            'bin_min': fatia_bin.start,
+            'bin_max': fatia_bin.stop,
+            'frame_min': fatia_tempo.start,
+            'frame_max': fatia_tempo.stop,
+            'bin_pico': bin_pico,
+            'nome_nota': nome_nota,
+            'freq_hz': freq_hz,
+            't_onset': t_onset,
+            't_offset': t_offset,
+            'duracao': duracao,
+            'area_px': int(area_px)
+        })
+
+    # Ordena os componentes cronologicamente pelo tempo de onset
+    componentes_validos.sort(key=lambda c: c['t_onset'])
+
+    # -------------------------------------------------------------------------
+    # AGRUPAMENTO HARMONICO (Resolucao do Problema da Serie Harmonica)
+    # Justificativa Acustica: Quando uma corda vibra, a Fundamental (f0) e seus
+    # sobretons (2f0, 3f0...) nascem exatamente juntos no tempo da palhetada.
+    # Agrupamos componentes que iniciam em uma mesma janela temporal (<= 0.35s).
+    # O componente com a MENOR frequencia e classificado como a Fundamental (f0).
+    # -------------------------------------------------------------------------
+    eventos_musicais = []
+    componentes_usados = set()
+
+    for i, comp in enumerate(componentes_validos):
+        if i in componentes_usados:
+            continue
+        grupo = [comp]
+        componentes_usados.add(i)
+
+        for j, outro in enumerate(componentes_validos):
+            if j in componentes_usados:
+                continue
+            # Verifica concorrencia temporal (ataque similar e sobreposicao no tempo)
+            if abs(outro['t_onset'] - comp['t_onset']) <= 0.35:
+                sobreposicao = min(outro['t_offset'], comp['t_offset']) - max(outro['t_onset'], comp['t_onset'])
+                if sobreposicao > 0:
+                    grupo.append(outro)
+                    componentes_usados.add(j)
+
+        # Ordena o grupo da frequencia mais grave para a mais aguda
+        grupo.sort(key=lambda c: c['bin_pico'])
+        fundamental = grupo[0]
+        harmonicos = grupo[1:]
+
+        eventos_musicais.append({
+            'fundamental': fundamental,
+            'harmonicos': harmonicos
+        })
+
+    # =========================================================================
+    # ETAPA 8: GERAÇÃO DA IMAGEM COMPARATIVA (4 Painéis com Bounding Boxes)
+    # =========================================================================
     fig = plt.figure(figsize=(18, 10))
     gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.45, wspace=0.35)
 
@@ -207,7 +273,7 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
         x_axis='time', y_axis='cqt_note', fmin=nota_mi_grave,
         cmap='magma', ax=ax1
     )
-    ax1.set_title('1. Espectrograma Original (Sem Filtro)', fontsize=11, fontweight='bold')
+    ax1.set_title('1. Espectrograma Original CQT (Sem Filtro)', fontsize=11, fontweight='bold')
     ax1.set_xlabel('Tempo (segundos)')
     ax1.set_ylabel('Notas Musicais')
     fig.colorbar(img1, ax=ax1, format='%+2.0f dB')
@@ -230,60 +296,97 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
         origin='lower', aspect='auto',
         cmap='gray', interpolation='nearest'
     )
-    ax3.set_title('3. Mascara Polida (Fechamento + Abertura Morfologica)', fontsize=11, fontweight='bold')
+    ax3.set_title('3. Mascara Polida (Abertura 1x5 + Fechamento 1x15)', fontsize=11, fontweight='bold')
     ax3.set_xlabel('Frames (unidades de tempo)')
     ax3.set_ylabel('Bins CQT (unidades de frequencia)')
 
-    # --- Painel 4 (Inferior Direito): Espectrograma Final Limpo ---
+    # --- Painel 4 (Inferior Direito): Espectrograma Final + Bounding Boxes das Notas ---
     ax4 = fig.add_subplot(gs[1, 1])
     img4 = librosa.display.specshow(
         espectrograma_limpo, sr=sr, hop_length=512,
         x_axis='time', y_axis='cqt_note', fmin=nota_mi_grave,
         cmap='magma', ax=ax4
     )
-    ax4.set_title('4. Espectrograma Final (Mascara Aplicada)', fontsize=11, fontweight='bold')
+    ax4.set_title('4. Espectrograma Final + Deteccao de Notas (Etapa 2)', fontsize=11, fontweight='bold')
     ax4.set_xlabel('Tempo (segundos)')
     ax4.set_ylabel('Notas Musicais')
     fig.colorbar(img4, ax=ax4, format='%+2.0f dB')
 
+    # Desenha Bounding Boxes ao redor das notas fundamentais detectadas no Painel 4
+    for ev in eventos_musicais:
+        f = ev['fundamental']
+        t_ini = f['t_onset']
+        t_dur = f['duracao']
+        # Conversao aproximada do bin para a coordenada vertical de exibicao no specshow
+        # No specshow com y_axis='cqt_note', a coordenada y interna mapeia as frequencias em Hz
+        f_min_box = librosa.cqt_frequencies(n_bins=84, fmin=nota_mi_grave)[f['bin_min']]
+        f_max_box = librosa.cqt_frequencies(n_bins=84, fmin=nota_mi_grave)[min(f['bin_max'], 83)]
+        h_box = f_max_box - f_min_box
+
+        retangulo = patches.Rectangle(
+            (t_ini, f_min_box), t_dur, h_box,
+            linewidth=2, edgecolor='cyan', facecolor='none', linestyle='--'
+        )
+        ax4.add_patch(retangulo)
+        ax4.text(
+            t_ini, f_max_box * 1.05, f"{f['nome_nota']} ({f['freq_hz']:.0f}Hz)",
+            color='cyan', fontsize=9, fontweight='bold',
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='black', alpha=0.7, edgecolor='cyan')
+        )
+
     fig.suptitle(
-        'Pipeline de Limpeza Espectral: CQT + Mascara Binaria + Morfologia Matematica',
+        'Pipeline Integrada: CQT -> Mascara Morfologica -> Bounding Boxes de Notas (TCC)',
         fontsize=13, fontweight='bold', y=0.98
     )
 
     plt.savefig(caminho_imagem_saida, dpi=150, bbox_inches='tight')
     plt.close()
 
-    print(f"Imagem comparativa (4 paineis) gerada com sucesso em: {caminho_imagem_saida}")
-    print(f"  > Total de pixels ativos na mascara bruta:  {mascara_binaria.sum()}")
-    print(f"  > Total de pixels ativos na mascara limpa:  {mascara_limpa.sum()}")
-    print(f"  > Pixels removidos pela morfologia:         {mascara_binaria.sum() - mascara_limpa.sum()}")
+    print(f"\n[SUCESSO] Imagem comparativa gerada em: {caminho_imagem_saida}")
+    print(f"  > Componentes detectados na mascara: {len(componentes_validos)}")
+    print(f"  > Notas fundamentais identificadas:   {len(eventos_musicais)}")
+    print("\n" + "=" * 70)
+    print("TABELA DE NOTAS EXTRAIDAS (ETAPA 2 - PITCH & ONSET TRACKING)")
+    print("=" * 70)
+    for idx, ev in enumerate(eventos_musicais, 1):
+        f = ev['fundamental']
+        harms = [f"{h['nome_nota']} ({h['freq_hz']:.1f}Hz)" for h in ev['harmonicos']]
+        harms_str = ", ".join(harms) if harms else "Nenhum"
+        print(f"Nota {idx}: {f['nome_nota']} ({f['freq_hz']:.1f} Hz)")
+        print(f"   -> Onset (Ataque):  {f['t_onset']:.2f} s")
+        print(f"   -> Offset (Termino):{f['t_offset']:.2f} s")
+        print(f"   -> Duracao Real:    {f['duracao']:.2f} s")
+        print(f"   -> Harmonicos Filtrados: [{harms_str}]")
+        print("-" * 70)
+
+    return eventos_musicais
 
 
 # =============================================================================
 # BLOCO DE EXECUÇÃO
 # =============================================================================
-# Usa o caminho absoluto relativo ao local deste script, evitando erros
-# causados por executar o arquivo de um diretório diferente no terminal.
-diretorio_base = os.path.dirname(os.path.abspath(__file__))
-audio_entrada = os.path.join(diretorio_base, 'audios', 'som4.mp3')
+if __name__ == '__main__':
+    # Executa a pipeline sobre o audio selecionado e salva o resultado sequencialmente.
+    diretorio_base = os.path.dirname(os.path.abspath(__file__))
+    
+    # Pode alternar aqui entre 'som2.wav', 'som4.mp3', etc.
+    audio_entrada = os.path.join(diretorio_base, 'audios', 'som2.wav')
 
-# Cria a pasta de resultados se não existir
-pasta_resultados = os.path.join(diretorio_base, 'resultados')
-os.makedirs(pasta_resultados, exist_ok=True)
+    pasta_resultados = os.path.join(diretorio_base, 'resultados')
+    os.makedirs(pasta_resultados, exist_ok=True)
 
-# Descobre o próximo número de resultado para não sobrescrever os anteriores
-arquivos_existentes = glob.glob(os.path.join(pasta_resultados, 'resultado_*.png'))
-numeros = []
-for arq in arquivos_existentes:
-    try:
-        nome_base = os.path.basename(arq)
-        num = int(nome_base.replace('resultado_', '').replace('.png', ''))
-        numeros.append(num)
-    except ValueError:
-        pass
+    arquivos_existentes = glob.glob(os.path.join(pasta_resultados, 'resultado_*.png'))
+    numeros = []
+    for arq in arquivos_existentes:
+        try:
+            nome_base = os.path.basename(arq)
+            num = int(nome_base.replace('resultado_', '').replace('.png', ''))
+            numeros.append(num)
+        except ValueError:
+            pass
 
-proximo_numero = 1 if not numeros else max(numeros) + 1
-caminho_saida = os.path.join(pasta_resultados, f'resultado_{proximo_numero}.png')
+    proximo_numero = 1 if not numeros else max(numeros) + 1
+    caminho_saida = os.path.join(pasta_resultados, f'resultado_{proximo_numero}.png')
 
-gerar_imagem_do_audio(audio_entrada, caminho_saida)
+    eventos_detectados = gerar_imagem_do_audio(audio_entrada, caminho_saida)
+

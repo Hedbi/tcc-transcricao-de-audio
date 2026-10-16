@@ -1,4 +1,4 @@
-﻿# TCC: Transcrição Automática de Áudio de Guitarra para Tablatura
+# TCC: Transcrição Automática de Áudio de Guitarra para Tablatura
 
 Este repositório contém o código-fonte e os experimentos do meu Trabalho de Conclusão de Curso (TCC). O objetivo principal do projeto é desenvolver um sistema capaz de processar um arquivo de áudio (`.wav`) contendo gravações de guitarra e transcrevê-lo automaticamente para o formato de tablatura.
 
@@ -8,26 +8,34 @@ Para atingir este objetivo, o projeto aborda desafios clássicos de Recuperaçã
 
 ## Status Atual (Progresso)
 
-O projeto está na fase de **Pré-processamento e Limpeza Espectral**, preparando a representação visual/matemática do áudio para a extração de características.
+O projeto concluiu as duas primeiras etapas do pipeline de transcrição:
 
-**Concluído (Etapa 1 - Limpeza Espectral):**
-- [x] **Transformada CQT:** Implementação da Constant-Q Transform calibrada para a afinação padrão da guitarra (fmin = 82.41 Hz / E2).
-- [x] **Limiarização (Noise Gate):** Corte de ruído de fundo e reverberação abaixo de -40 dB.
+**Concluído (Etapa 1 - Limpeza Espectral e Morfologia):**
+- [x] **Transformada CQT:** Constant-Q Transform calibrada para a afinação da guitarra (fmin = 82.41 Hz / E2, n_bins = 84, hop_length = 512).
+- [x] **Limiarização (Noise Gate):** Corte em -40 dB eliminando ruído elétrico e eco ambiente.
 - [x] **Máscara Binária:** Separação do sinal musical do ruído através de matrizes booleanas.
-- [x] **Morfologia Matemática:** Uso de operações de Fechamento (1x20) e Abertura (3x3) espaciais para tapar descontinuidades nas notas e remover ilhas isoladas de ruído, transformando a energia acústica em blocos conexos sólidos.
+- [x] **Morfologia Direcional:** Abertura horizontal (1x5) para desacoplamento de transientes verticais da palheta e fechamento horizontal (1x15) para união de vibrato e sustentação.
 
-**Próximos Passos (Etapas 2 e 3):**
-- [ ] **Detecção de Onset:** Descobrir o tempo exato (ataque) em que cada bloco conexo inicia.
-- [ ] **Detecção da Fundamental (Pitch Tracking):** Identificar a frequência fundamental (f0) de cada bloco, ignorando os harmônicos superiores.
-- [ ] **Mapeamento de Tablatura:** Modelagem (via HMM ou teoria dos grafos) para definir em qual corda e casa a nota fundamental foi tocada, simulando a biomecânica da mão humana.
+**Concluído (Etapa 2 - Extração Musical via Visão Computacional):**
+- [x] **Rotulação de Componentes Conexos:** Identificação de objetos conexos e Bounding Boxes temporais/frequenciais (`scipy.ndimage`).
+- [x] **Detecção de Onset e Offset:** Extração precisa do tempo de início, término e duração real de cada palhetada.
+- [x] **Agrupamento Harmônico (Harmonic Sieve):** Resolução do problema da série harmônica, identificando a Fundamental (f0) e agrupando sobretons concomitantes.
+- [x] **Anotação Visual:** Desenho de Bounding Boxes e rótulos das notas identificadas no espectrograma final.
+
+**Próximos Passos (Etapa 3):**
+- [ ] **Mapeamento de Tablatura:** Resolução da ambiguidade do braço da guitarra (Fretboard Ambiguity) via otimização biomecânica (HMM / Viterbi).
+- [ ] **Exportação:** Geração de tablatura legível em ASCII e MusicXML.
+
+> 📖 **Documentação Acadêmica:** Consulte o arquivo [RELATORIO_TECNICO.md](RELATORIO_TECNICO.md) para a fundamentação matemática, justificativas de cada parâmetro calibrado e referências bibliográficas completas para o TCC.
 
 ---
 
 ## Estrutura do Repositório
 
-* `audios/`: Diretório contendo os arquivos `.wav` de teste (gravações de guitarra isolada).
-* `resultados/`: Diretório onde o algoritmo salva as imagens geradas (gráficos de espectrograma e máscaras de limpeza).
-* `gerar_espectrograma.py`: Script principal da Etapa 1. Carrega o áudio, aplica a CQT, limpa o ruído com morfologia e plota o comparativo de 4 painéis.
+* `audios/`: Arquivos de áudio (.wav / .mp3) com execuções de teste na guitarra.
+* `resultados/`: Imagens geradas com os 4 painéis da pipeline (CQT original, máscara bruta, máscara polida e notas detectadas com Bounding Boxes).
+* `gerar_espectrograma.py`: Script principal das Etapas 1 e 2 (Pré-processamento, Morfologia e Extração de Notas).
+* `RELATORIO_TECNICO.md`: Relatório acadêmico completo com a teoria, decisões de projeto e dados empíricos.
 
 ---
 
