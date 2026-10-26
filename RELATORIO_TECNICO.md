@@ -1,5 +1,25 @@
 ﻿# RELATÓRIO TÉCNICO DE DESENVOLVIMENTO (TCC 1)
 
+> **Revisão metodológica (outubro de 2026).** A transcrição principal foi
+> redefinida para trechos monofônicos e agora detecta onset com
+> `librosa.onset_detect` e estima f0 com pYIN diretamente no sinal original.
+> A CQT e a máscara binária permanecem neste relatório como análise
+> exploratória/pré-processamento, não como fonte dos eventos musicais.
+>
+> O fechamento morfológico horizontal foi removido do fluxo padrão de
+> `gerar_espectrograma.py`: um kernel de 15 ou 20 frames pode preencher
+> lacunas entre ataques consecutivos e destruir a evidência temporal. Quando a
+> abertura exploratória 1x5 é ativada, ela remove estruturas com menos de cinco
+> frames na direção temporal; portanto, não preserva estruturas de 1 ou 2
+> pixels. O limiar de -40 dB e os tamanhos de kernel são configurações
+> exploratórias, sem alegação de calibração até serem comparados no GuitarSet.
+>
+> A avaliação quantitativa é realizada por `avaliar_com_guitarset.py`, que lê
+> JAMS, restringe a referência a uma voz monofônica e calcula precisão,
+> revocação, F1, onset e acurácia de pitch com `mir_eval`. O script
+> `experimentos_morfologia.py` registra medidas descritivas da máscara; essas
+> medidas não substituem as métricas de transcrição.
+
 **Projeto:** Sistema de Transcrição Automática de Áudio de Guitarra para Tablatura  
 **Área:** Recuperação de Informação Musical (MIR), Processamento Digital de Sinais (DSP) e Visão Computacional  
 **Repositório:** `tcc-transcricao-de-audio`  
@@ -58,14 +78,16 @@ Em vez de manipular destrutivamente os decibéis da matriz, o sistema gera uma m
 $$M(f, t) = \begin{cases} 1, & \text{se } S(f, t) > -40\text{ dB} \\ 0, & \text{se } S(f, t) \le -40\text{ dB} \end{cases}$$
 Essa técnica é derivada do conceito de *Ideal Binary Mask* (IBM) em processamento de fala e separação de fontes. O espectrograma vira uma imagem binária em preto e branco.
 
-### 3.2. O Desafio dos Transientes e a Solução Morfológica Direcional
+### 3.2. O Desafio dos Transientes e o limite da morfologia
 Durante os testes com notas isoladas (arquivo `som4.mp3`), detectou-se um problema crítico:
 * **O Problema do "Pente":** O impacto físico da palheta na corda gera um estalo percussivo de banda larga instantâneo (uma coluna vertical que atravessa dezenas de frequências durante ~40 ms). Ao aplicar fechamento morfológico genérico, essa barra vertical servia como uma "ponte", fundindo a nota fundamental e todos os seus harmônicos em um único bloco monolítico conectado.
-* **A Solução Morfológica Direcional (Operadores Sequenciais):**
-  1. **Abertura Horizontal (`structure = np.ones((1, 5))`):**  
-     A abertura realiza Erosão seguida de Dilatação. Um elemento estruturante $1 \times 5$ (1 semitom de altura $\times$ ~115 ms de largura) apaga qualquer mancha que não tenha sustentação temporal horizontal. Como o estalo percussivo vertical da palheta dura menos de 50 ms, ele é completamente eliminado, desacoplando os harmônicos horizontais antes de qualquer fusão.
-  2. **Fechamento Horizontal (`structure = np.ones((1, 15))`):**  
-     O fechamento realiza Dilatação seguida de Erosão. O elemento $1 \times 15$ (~345 ms) fecha pequenos vales de intensidade provocados pelo vibrato natural da mão do guitarrista, garantindo que uma nota longa não seja interpretada como múltiplas notas picotadas.
+* **Decisão metodológica:** `gerar_espectrograma.py` mantém a abertura 1x5
+  apenas como comparação exploratória e a desativa por padrão. A abertura é
+  erosão seguida de dilatação; portanto, remove estruturas menores que cinco
+  frames na direção temporal, inclusive manchas de 1 ou 2 pixels. O
+  fechamento 1x15 (e o antigo 1x20) não é mais aplicado, pois pode preencher
+  lacunas entre ataques legítimos. Nenhuma dessas configurações é chamada de
+  calibrada sem avaliação no conjunto anotado.
 
 ---
 
@@ -81,7 +103,10 @@ Por meio de `scipy.ndimage.find_objects`, extraem-se as coordenadas extremas de 
 * `bin_min` e `bin_max` $\rightarrow$ Mapeados para notas e frequências em Hz.
 
 ### 4.2. Filtro de Área Mínima (Rejeição de Batidas Mecânicas)
-Componentes com área inferior a $40\text{ pixels}$ são descartados. Esse limiar foi calibrado empiricamente para rejeitar cliques de apoio de dedos na madeira e ruídos transitórios de palhetada que tenham sobrevivido à morfologia.
+Componentes com área inferior a $40\text{ pixels}$ são descartados no
+visualizador legado. Esse valor é uma heurística exploratória e ainda precisa
+ser comparado a uma referência anotada; ele não participa da transcrição
+principal.
 
 ### 4.3. Agrupamento Harmônico (*Harmonic Sieve*) e Identificação da Fundamental ($f_0$)
 Para resolver o problema da série harmônica:

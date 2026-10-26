@@ -1,0 +1,27 @@
+# =============================================================================
+# TCC - Transcrição de Áudio de Guitarra para Tablatura
+# =============================================================================
+
+# Datasets grandes (GuitarSet ~1.6GB)
+datasets/
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Ambientes virtuais
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Resultados de testes antigos (manter apenas os relevantes via commit explícito)
+# resultados/exploratoria/

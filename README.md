@@ -1,58 +1,72 @@
-# TCC: Transcrição Automática de Áudio de Guitarra para Tablatura
+# TCC: Transcricao Automatica de Audio de Guitarra para Tablatura
 
-Este repositório contém o código-fonte e os experimentos do meu Trabalho de Conclusão de Curso (TCC). O objetivo principal do projeto é desenvolver um sistema capaz de processar um arquivo de áudio (`.wav`) contendo gravações de guitarra e transcrevê-lo automaticamente para o formato de tablatura.
+## Escopo e status atual
 
-Para atingir este objetivo, o projeto aborda desafios clássicos de Recuperação de Informação Musical (MIR), como a **estimativa de pitch** e a **resolução da ambiguidade do braço da guitarra** (mesma nota em cordas diferentes).
+O escopo experimental atual e **monofonico**: cada intervalo contem no
+maximo uma nota. A transcricao principal trabalha no sinal original, sem usar
+a CQT ou morfologia para decidir onsets e f0:
 
----
+- [x] Onsets pelo fluxo espectral (`librosa.onset.onset_detect`).
+- [x] f0 global pelo pYIN, agregado nos intervalos entre onsets.
+- [x] Avaliacao padronizada com anotacoes JAMS do GuitarSet e `mir_eval`.
+- [x] CQT e mascara preservadas como analise exploratoria, nao como nucleo
+  da transcricao.
+- [ ] Validar o lote final do GuitarSet e reportar os resultados quantitativos.
+- [ ] Mapeamento de tablatura (ambiguidade de corda/casa).
+- [ ] Exportacao para ASCII e MusicXML.
 
-## Status Atual (Progresso)
+> **Limitacao metodologica:** `-40 dB` e os tamanhos de abertura sao
+> configuracoes exploratorias. Nao sao apresentados como parametros
+> "calibrados" ate que os experimentos e metricas do GuitarSet sejam
+> executados. O fechamento horizontal foi removido do fluxo padrao porque
+> pode fundir ataques consecutivos.
 
-O projeto concluiu as duas primeiras etapas do pipeline de transcrição:
+## Estrutura do repositorio
 
-**Concluído (Etapa 1 - Limpeza Espectral e Morfologia):**
-- [x] **Transformada CQT:** Constant-Q Transform calibrada para a afinação da guitarra (fmin = 82.41 Hz / E2, n_bins = 84, hop_length = 512).
-- [x] **Limiarização (Noise Gate):** Corte em -40 dB eliminando ruído elétrico e eco ambiente.
-- [x] **Máscara Binária:** Separação do sinal musical do ruído através de matrizes booleanas.
-- [x] **Morfologia Direcional:** Abertura horizontal (1x5) para desacoplamento de transientes verticais da palheta e fechamento horizontal (1x15) para união de vibrato e sustentação.
+* `audios/`: arquivos locais de teste.
+* `datasets/guitarset/`: anotacoes e audios do GuitarSet (nao versionados).
+* `resultados/`: figuras e relatorios gerados.
+* `pipeline_transcritor.py`: pipeline monofonica (onset + pYIN).
+* `avaliar_com_guitarset.py`: avaliacao JAMS/GuitarSet com `mir_eval`.
+* `analise_exploratoria.py`: figuras para o capitulo de analise exploratoria.
+* `gerar_espectrograma.py`: visualizacao legada da mascara CQT, sem fechamento
+  por padrao.
+* `experimentos_morfologia.py`: tabela descritiva para comparar configuracoes.
+* `RELATORIO_TECNICO.md`: fundamentacao, limites e protocolo experimental.
 
-**Concluído (Etapa 2 - Extração Musical via Visão Computacional):**
-- [x] **Rotulação de Componentes Conexos:** Identificação de objetos conexos e Bounding Boxes temporais/frequenciais (`scipy.ndimage`).
-- [x] **Detecção de Onset e Offset:** Extração precisa do tempo de início, término e duração real de cada palhetada.
-- [x] **Agrupamento Harmônico (Harmonic Sieve):** Resolução do problema da série harmônica, identificando a Fundamental (f0) e agrupando sobretons concomitantes.
-- [x] **Anotação Visual:** Desenho de Bounding Boxes e rótulos das notas identificadas no espectrograma final.
+## Como executar
 
-**Próximos Passos (Etapa 3):**
-- [ ] **Mapeamento de Tablatura:** Resolução da ambiguidade do braço da guitarra (Fretboard Ambiguity) via otimização biomecânica (HMM / Viterbi).
-- [ ] **Exportação:** Geração de tablatura legível em ASCII e MusicXML.
-
-> 📖 **Documentação Acadêmica:** Consulte o arquivo [RELATORIO_TECNICO.md](RELATORIO_TECNICO.md) para a fundamentação matemática, justificativas de cada parâmetro calibrado e referências bibliográficas completas para o TCC.
-
----
-
-## Estrutura do Repositório
-
-* `audios/`: Arquivos de áudio (.wav / .mp3) com execuções de teste na guitarra.
-* `resultados/`: Imagens geradas com os 4 painéis da pipeline (CQT original, máscara bruta, máscara polida e notas detectadas com Bounding Boxes).
-* `gerar_espectrograma.py`: Script principal das Etapas 1 e 2 (Pré-processamento, Morfologia e Extração de Notas).
-* `RELATORIO_TECNICO.md`: Relatório acadêmico completo com a teoria, decisões de projeto e dados empíricos.
-
----
-
-## Como executar o projeto
-
-### 1. Dependências
-O projeto é desenvolvido em **Python** e requer as bibliotecas matemáticas e de processamento de áudio padrão da indústria. Para instalar todas as dependências, execute no terminal:
+### Dependencias
 
 ```bash
-pip install numpy scipy matplotlib librosa
+pip install -r requirements.txt
 ```
 
-### 2. Executando a Limpeza Espectral
-Basta rodar o script principal. Ele lerá um arquivo `.wav` da pasta de áudios e gerará a imagem comparativa da aplicação da máscara morfológica.
+### Transcricao monofonica
 
 ```bash
-python gerar_espectrograma.py
+python pipeline_transcritor.py audios/som1.wav --visualizar
 ```
 
-O resultado será salvo automaticamente na pasta `resultados/` com um número sequencial (ex: `resultado_1.png`).
+### Analise exploratoria
+
+```bash
+python analise_exploratoria.py audios/som1.wav
+```
+
+### GuitarSet e metricas
+
+Baixe as anotacoes e os audios do
+[GuitarSet no Zenodo](https://zenodo.org/records/3371780) e coloque-os em
+`datasets/guitarset/annotation` e `datasets/guitarset/audio_mono-mic`.
+O modo `solo` e o recomendado para o escopo monofonico:
+
+```bash
+python avaliar_com_guitarset.py --batch --style solo --max-files 10 --salvar-csv resultados/guitarset.csv
+```
+
+Para registrar comparacoes exploratorias de limiar e abertura:
+
+```bash
+python experimentos_morfologia.py audios/som1.wav
+```

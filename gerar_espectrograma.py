@@ -13,11 +13,11 @@ import numpy as np
 # JUSTIFICATIVA TEÓRICA (para a escrita da monografia):
 # O SciPy (Scientific Python) é a biblioteca de computação científica padrão
 # para o processamento de sinais discretos e morfologia matemática. O módulo
-# 'ndimage' (N-Dimensional Image) oferece as operações de abertura e fechamento
-# morfológico que serão aplicadas sobre a Máscara Binária.
+# 'ndimage' (N-Dimensional Image) oferece a operação de abertura morfológica
+# usada apenas na comparação exploratória da Máscara Binária.
 # Referência: Gonzalez & Woods, "Processamento Digital de Imagens", Cap. 9.
 # -----------------------------------------------------------------------------
-from scipy.ndimage import binary_closing, binary_opening, label, find_objects
+from scipy.ndimage import binary_opening, label, find_objects
 
 # BIBLIOTECAS DE ÁUDIO E VISUALIZAÇÃO
 import librosa
@@ -30,7 +30,12 @@ import matplotlib.patches as patches
 # =============================================================================
 # FUNÇÃO PRINCIPAL: Carrega o áudio, gera o CQT e aplica a Máscara Binária
 # =============================================================================
-def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
+def gerar_imagem_do_audio(
+    caminho_audio,
+    caminho_imagem_saida,
+    limiar_db=-40,
+    aplicar_morfologia=False
+):
     """
     Pipeline completo de pré-processamento espectral para guitarra.
 
@@ -39,6 +44,9 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
         caminho_imagem_saida (str):  Caminho onde a imagem comparativa será salva.
         limiar_db (float):           Limiar de corte em decibéis para a Máscara Binária.
                                      Padrão: -40 dB. (Ver justificativa abaixo.)
+        aplicar_morfologia (bool):   Ativa a limpeza morfológica apenas para
+                                     comparação exploratória. Desativada por
+                                     padrão para não alterar ataques.
     """
 
     # =========================================================================
@@ -116,16 +124,9 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
     # e retorna True onde a intensidade for maior que o limiar, e False onde
     # não for. O .astype(np.uint8) converte True→1 e False→0.
     #
-    # PARÂMETRO CRÍTICO: limiar_db = -40 dB
-    # Justificativa: O limiar de -40 dB (relativo ao pico de 0 dB) foi
-    # calibrado empiricamente para a guitarra acústica/elétrica com base
-    # no seguinte raciocínio: os primeiros 2 ou 3 harmônicos de uma nota de
-    # guitarra tipicamente ficam entre -5 dB e -25 dB. O eco de sala e ruído
-    # de cauda ficam abaixo de -45 dB a -80 dB. O limiar de -40 dB posiciona
-    # o corte no "vale" entre esses dois grupos, capturando os harmônicos
-    # principais sem capturar o eco. Isso é equivalente ao conceito de Noise
-    # Gate (portão de ruído) na indústria de áudio profissional.
-    # Referência: Zölzer, U. "DAFX: Digital Audio Effects", Cap. 5 (Dynamics).
+    # -40 dB é uma configuração exploratória relativa ao pico, não uma
+    # calibração validada. A escolha definitiva deve ser comparada por métricas
+    # em um conjunto anotado; a transcrição principal não depende desta máscara.
     mascara_binaria = (espectrograma_db > limiar_db).astype(np.uint8)
 
     # =========================================================================
@@ -150,17 +151,21 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
     # apaga os transientes verticais curtos e preserva apenas as notas que tem
     # sustentacao acustica horizontal no tempo.
     # Referencia: Gonzalez & Woods, "Processamento Digital de Imagens", Cap. 9.
-    mascara_apos_abertura = binary_opening(mascara_binaria, structure=np.ones((1, 5)))
+    if aplicar_morfologia:
+        # A abertura 1x5 remove estruturas com menos de cinco frames contínuos
+        # na direção temporal. Ela não preserva manchas curtas de 1 ou 2 pixels.
+        mascara_apos_abertura = binary_opening(
+            mascara_binaria, structure=np.ones((1, 5))
+        )
+        # Não há fechamento por padrão: qualquer kernel horizontal pode unir
+        # ataques consecutivos e apagar a separação temporal dos eventos.
+        mascara_limpa = mascara_apos_abertura
+    else:
+        mascara_limpa = mascara_binaria
 
-    # =========================================================================
-    # OPERACAO 5.2: FECHAMENTO HORIZONTAL (Sustentacao e Vibrato)
-    # =========================================================================
-    # PARÂMETRO CRITICO: structure=np.ones((1, 15)) -> Bloco 1 linha x 15 colunas
-    # Justificativa: O fechamento horizontal (1x15 colunas ~ 345ms) une pequenas
-    # quebras na sustentacao da nota sem criar pontes verticais entre notas
-    # de frequencias diferentes. Isso evita que uma nota sustentada seja
-    # contabilizada como dois ataques separados devido a vibratos sutis.
-    mascara_limpa = binary_closing(mascara_apos_abertura, structure=np.ones((1, 15)))
+    # O fechamento horizontal foi deliberadamente removido. Mesmo uma lacuna
+    # de poucos frames pode separar dois ataques legítimos; preenchê-la faria
+    # a imagem perder exatamente a informação temporal que a Etapa 2 precisa.
 
     # =========================================================================
     # ETAPA 6: APLICACAO DA MASCARA NO ESPECTROGRAMA ORIGINAL
@@ -296,7 +301,12 @@ def gerar_imagem_do_audio(caminho_audio, caminho_imagem_saida, limiar_db=-40):
         origin='lower', aspect='auto',
         cmap='gray', interpolation='nearest'
     )
-    ax3.set_title('3. Mascara Polida (Abertura 1x5 + Fechamento 1x15)', fontsize=11, fontweight='bold')
+    titulo_mascara = (
+        '3. Mascara com Abertura Exploratoria (1x5)'
+        if aplicar_morfologia else
+        '3. Mascara Binaria sem Morfologia (fluxo nao destrutivo)'
+    )
+    ax3.set_title(titulo_mascara, fontsize=11, fontweight='bold')
     ax3.set_xlabel('Frames (unidades de tempo)')
     ax3.set_ylabel('Bins CQT (unidades de frequencia)')
 
@@ -389,4 +399,3 @@ if __name__ == '__main__':
     caminho_saida = os.path.join(pasta_resultados, f'resultado_{proximo_numero}.png')
 
     eventos_detectados = gerar_imagem_do_audio(audio_entrada, caminho_saida)
-
