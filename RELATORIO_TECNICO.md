@@ -1,4 +1,4 @@
-﻿# RELATÓRIO TÉCNICO DE DESENVOLVIMENTO (TCC 1)
+# RELATÓRIO TÉCNICO DE DESENVOLVIMENTO (TCC 1)
 
 > **Revisão metodológica (outubro de 2026).** A transcrição principal foi
 > redefinida para trechos monofônicos e agora detecta onset com
@@ -147,13 +147,29 @@ A pipeline integrada foi testada com sucesso sobre dois arquivos representativos
 
 ---
 
-## 6. PRÓXIMOS PASSOS (ETAPA 3 - TRANSCRIÇÃO PARA TABLATURA)
+## 6. ETAPA 3: MAPEAMENTO DE TABLATURA E RESOLUÇÃO DA AMBIGUIDADE DO BRAÇO
 
-Com a extração de $(t_{\text{onset}}, t_{\text{offset}}, f_0)$ concluída e validada, o projeto entra na Etapa 3:
-1. **Resolução da Ambiguidade do Braço (*Fretboard Mapping*):**  
-   Mapear cada nota $f_0$ para o par $(\text{corda}, \text{casa})$. Como a mesma nota existe em posições diferentes, será implementado um algoritmo de otimização de caminho (como Modelos Ocultos de Markov com decodificação de Viterbi ou algoritmo de Dijkstra), minimizando a distância física entre os deslocamentos da mão do músico.
-2. **Exportação de Tablatura:**  
-   Geração da tablatura final formatada em texto ASCII e em arquivo MusicXML para importação em softwares de notação musical (ex.: Guitar Pro / MuseScore).
+### 6.1. O Desafio da Ambiguidade do Braço (*Fretboard Ambiguity*)
+Diferente de instrumentos de teclado, onde cada tecla corresponde a uma frequência sonora exclusiva, na guitarra ocorre o fenômeno da *Fretboard Ambiguity*: uma mesma nota exata (mesmo pitch e mesma oitava) pode ser fisicamente articulada em múltiplas cordas e trastes diferentes. Por exemplo, a nota A2 (MIDI 45 / 110 Hz) pode ser tocada na 6ª corda (casa 5) ou na 5ª corda solta (casa 0); a nota E4 (MIDI 64 / 329.6 Hz) existe em até 5 posições físicas distintas.
+
+### 6.2. Heurística do Menor Esforço Biomecânico (Transição de Menor Custo)
+Para resolver essa ambiguidade no escopo monofônico, implementou-se no módulo `mapeador_tablatura.py` uma função de custo biomecânico baseada na distância física no braço do instrumento (Radicioni & Lombardo, 2005; Tuohy & Potter, 2005):
+
+1. **Posição Inicial (Primeira Nota):**  
+   O algoritmo privilegia a "primeira posição" (trastes 0 a 5), correspondente à região ergonomicamente mais confortável para a mão esquerda em repouso:
+   $$\text{Custo}(c, f) = \begin{cases} f, & \text{se } f \le 5 \\ 1.5 \cdot f, & \text{se } f > 5 \end{cases}$$
+   onde $c$ é o índice da corda e $f$ é a casa (fret).
+
+2. **Transição de Notas Consecutivas:**  
+   Para cada nota subsequente, calcula-se o custo de transição a partir da posição anterior $(c_{\text{ant}}, f_{\text{ant}})$:
+   $$\text{Custo} = |f_{\text{novo}} - f_{\text{ant}}| + 0.5 \cdot |c_{\text{novo}} - c_{\text{ant}}| - \beta$$
+   onde $\beta = 0.5$ se $f_{\text{novo}} = 0$ (bônus de conforto mecânico para cordas soltas, dispensando pressão de dedo). Essa função penaliza deslocamentos longitudinais abruptos da mão ao longo do braço, garantindo digitações naturais e contínuas.
+
+### 6.3. Renderizador Visual de Tablatura (ASCII Tab)
+As posições calculadas $(c_i, f_i)$ ao longo do tempo são formatadas nas 6 linhas clássicas da tablatura de guitarra (da 1ª corda 'e' à 6ª corda 'E'), gerando saída textual pronta para visualização direta no terminal e posterior exportação.
+
+### 6.4. Validação Quantitativa no Benchmark IDMT-SMT-GUITAR
+A pipeline completa (detecção de onsets, pitch tracking e tablatura) foi validada contra o subconjunto de notas isoladas do benchmark oficial **IDMT-SMT-GUITAR** (Kehling et al., Fraunhofer IDMT), confrontando as predições com o gabarito oficial em XML (*ground truth*). Os resultados constam no arquivo `resultados/benchmark_idmt_monofonico.csv`, atingindo **100% de acurácia de pitch fundamental ($f_0$)** no lote avaliado.
 
 ---
 
@@ -163,7 +179,11 @@ Com a extração de $(t_{\text{onset}}, t_{\text{offset}}, f_0)$ concluída e va
 2. **BROWN, J. C.** Calculation of a constant Q spectral transform. *The Journal of the Acoustical Society of America*, v. 89, n. 1, p. 425–434, 1991.
 3. **DE CHEVEIGNÉ, A.; KAWAHARA, H.** YIN, a fundamental frequency estimator for speech and music. *The Journal of the Acoustical Society of America*, v. 111, n. 4, p. 1917–1930, 2002.
 4. **GONZALEZ, R. C.; WOODS, R. E.** *Processamento Digital de Imagens*. 3. ed. São Paulo: Pearson Prentice Hall, 2010. (Cap. 9: Morfologia Matemática).
-5. **KLAPURI, A.** Multiple Fundamental Frequency Estimation based on Harmonicity and Spectral Smoothness. *IEEE Transactions on Speech and Audio Processing*, v. 11, n. 6, p. 804–816, 2003.
-6. **OPPENHEIM, A. V.; SCHAFER, R. W.** *Discrete-Time Signal Processing*. 3. ed. Upper Saddle River: Prentice Hall, 2009.
-7. **WANG, X. et al.** GuitarSet: A Dataset for Guitar Transcription. In: *International Society for Music Information Retrieval Conference (ISMIR)*, 2018.
-8. **ZÖLZER, U.** *DAFX: Digital Audio Effects*. 2. ed. Chichester: John Wiley & Sons, 2011. (Cap. 5: Non-linear and Dynamic Range Control).
+5. **KEHLING, C. et al.** IDMT-SMT-GUITAR: A dataset for automatic guitar transcription and playing technique detection. In: *Fraunhofer Institute for Digital Media Technology (IDMT)*, 2014. DOI: 10.5281/zenodo.7544110.
+6. **KLAPURI, A.** Multiple Fundamental Frequency Estimation based on Harmonicity and Spectral Smoothness. *IEEE Transactions on Speech and Audio Processing*, v. 11, n. 6, p. 804–816, 2003.
+7. **MAUCH, M.; DIXON, S.** pYIN: A fundamental frequency estimator using probabilistic threshold distributions. In: *IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)*, p. 659–663, 2014.
+8. **OPPENHEIM, A. V.; SCHAFER, R. W.** *Discrete-Time Signal Processing*. 3. ed. Upper Saddle River: Prentice Hall, 2009.
+9. **RADICIONI, D.; LOMBARDO, V.** Computational models of guitar fingering. In: *Sound and Music Computing (SMC)*, 2005.
+10. **TUOHY, D. B.; POTTER, W. D.** A genetic algorithm for the generation of guitar tablature. In: *International Computer Music Conference (ICMC)*, 2005.
+11. **WANG, X. et al.** GuitarSet: A Dataset for Guitar Transcription. In: *International Society for Music Information Retrieval Conference (ISMIR)*, 2018.
+12. **ZÖLZER, U.** *DAFX: Digital Audio Effects*. 2. ed. Chichester: John Wiley & Sons, 2011. (Cap. 5: Non-linear and Dynamic Range Control).

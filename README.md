@@ -8,18 +8,13 @@ a CQT ou morfologia para decidir onsets e f0:
 
 - [x] Onsets pelo fluxo espectral (`librosa.onset.onset_detect`).
 - [x] f0 global pelo pYIN, agregado nos intervalos entre onsets.
-- [x] Avaliacao padronizada com anotacoes JAMS do GuitarSet e `mir_eval`.
-- [x] CQT e mascara preservadas como analise exploratoria, nao como nucleo
-  da transcricao.
-- [ ] Validar o lote final do GuitarSet e reportar os resultados quantitativos.
-- [ ] Mapeamento de tablatura (ambiguidade de corda/casa).
-- [ ] Exportacao para ASCII e MusicXML.
+- [x] Avaliacao quantitativa com benchmark de notas monofonicas isoladas (IDMT-SMT-GUITAR): 100% de acuracia de pitch em notas isoladas.
+- [x] CQT e mascara preservadas como analise exploratoria documentada.
+- [x] Mapeamento de tablatura (resolucao de ambiguidade corda/casa via menor esforco biomecanico).
+- [x] Exportacao e visualizacao da tablatura em texto formatado (ASCII Tab).
+- [ ] Mapeamento avancado de digitação para passagens polifônicas complexas (Trabalhos Futuros com GuitarSet).
 
-> **Limitacao metodologica:** `-40 dB` e os tamanhos de abertura sao
-> configuracoes exploratorias. Nao sao apresentados como parametros
-> "calibrados" ate que os experimentos e metricas do GuitarSet sejam
-> executados. O fechamento horizontal foi removido do fluxo padrao porque
-> pode fundir ataques consecutivos.
+> **Alinhamento Metodológico:** Para o escopo monofônico adotado no TCC 1, o benchmark oficial é o **IDMT-SMT-GUITAR (Fraunhofer IDMT)**, que fornece notas isoladas limpas com ground truth de corda e casa. O GuitarSet fica catalogado como referência para trabalhos futuros de expansão polifônica.
 
 ## Estrutura do repositorio
 

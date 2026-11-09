@@ -64,8 +64,11 @@ import glob
 import argparse
 import numpy as np
 import librosa
-import librosa.display
 import matplotlib.pyplot as plt
+
+# Módulo de Tablatura (Etapa 3 do TCC)
+import mapeador_tablatura as mt
+
 
 
 # =============================================================================
@@ -377,46 +380,59 @@ def imprimir_tabela_notas(lista_notas: list[dict], nome_arquivo: str = ""):
         lista_notas (list[dict]): Lista de notas gerada pelo pipeline.
         nome_arquivo (str): Nome do arquivo analisado para compor o título.
     """
-    separador_largo = "=" * 88
-    separador_fino = "-" * 88
+    separador_largo = "=" * 96
+    separador_fino = "-" * 96
 
     print("\n" + separador_largo)
     titulo = f"RESULTADO DA TRANSCRIÇÃO DE ÁUDIO"
     if nome_arquivo:
         titulo += f": {nome_arquivo}"
-    print(f"{titulo:^88}")
+    print(f"{titulo:^96}")
     print(separador_largo)
 
     cabecalho = (
-        f"{'Note#':^7} | {'Note Name':^11} | {'Freq (Hz)':^11} | "
-        f"{'MIDI':^8} | {'Onset (s)':^11} | {'Offset (s)':^11} | {'Duration (s)':^12}"
+        f"{'Note#':^6} | {'Nota':^7} | {'Freq (Hz)':^10} | "
+        f"{'MIDI':^6} | {'Corda/Casa':^12} | {'Onset (s)':^11} | {'Offset (s)':^11} | {'Dur (s)':^9}"
     )
     print(cabecalho)
     print(separador_fino)
 
     if not lista_notas:
-        print(f"{'Nenhuma nota identificada para exibição.':^88}")
+        print(f"{'Nenhuma nota identificada para exibição.':^96}")
         print(separador_largo + "\n")
         return
 
-    for item in lista_notas:
+    # Mapeia as posições físicas de tablatura
+    notas_com_tab = mt.mapear_notas_para_tablatura(lista_notas)
+
+    for item in notas_com_tab:
         idx = item['nota_idx']
         nome = item['note_name']
         freq = f"{item['freq_hz']:.2f}" if item['freq_hz'] is not None else "---"
         midi = f"{item['midi_number']:3d}" if item['midi_number'] is not None else "---"
+        pos_str = f"Corda {item['string_name']} / {item['fret']:2d}"
         onset = f"{item['onset_time']:.3f}"
         offset = f"{item['offset_time']:.3f}"
         dur = f"{item['duration']:.3f}"
 
         linha = (
-            f"{idx:^7d} | {nome:^11s} | {freq:^11s} | "
-            f"{midi:^8s} | {onset:^11s} | {offset:^11s} | {dur:^12s}"
+            f"{idx:^6d} | {nome:^7s} | {freq:^10s} | "
+            f"{midi:^6s} | {pos_str:^12s} | {onset:^11s} | {offset:^11s} | {dur:^9s}"
         )
         print(linha)
 
     print(separador_largo)
     print(f"Total de eventos musicais transcritos: {len(lista_notas)}")
-    print(separador_largo + "\n")
+    print(separador_largo)
+
+    # Renderiza a tablatura visual em ASCII
+    print("\n" + "=" * 50)
+    print(" TABLATURA GERADA (MENOR ESFORÇO BIOMECÂNICO) ")
+    print("=" * 50)
+    tab_ascii = mt.renderizar_tablatura_ascii(notas_com_tab)
+    print(tab_ascii)
+    print("=" * 50 + "\n")
+
 
 
 # =============================================================================
