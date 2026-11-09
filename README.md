@@ -23,50 +23,46 @@ a CQT ou morfologia para decidir onsets e f0:
 
 ## Estrutura do repositorio
 
-* `audios/`: arquivos locais de teste.
-* `datasets/guitarset/`: anotacoes e audios do GuitarSet (nao versionados).
-* `resultados/`: figuras e relatorios gerados.
-* `pipeline_transcritor.py`: pipeline monofonica (onset + pYIN).
-* `avaliar_com_guitarset.py`: avaliacao JAMS/GuitarSet com `mir_eval`.
-* `analise_exploratoria.py`: figuras para o capitulo de analise exploratoria.
-* `gerar_espectrograma.py`: visualizacao legada da mascara CQT, sem fechamento
-  por padrao.
-* `experimentos_morfologia.py`: tabela descritiva para comparar configuracoes.
-* `RELATORIO_TECNICO.md`: fundamentacao, limites e protocolo experimental.
+* `audios/`: arquivos locais de teste ativos.
+* `dataset/IDMT-SMT-GUITAR_V2/`: dataset de referência (ignorado no Git pelo `.gitignore`).
+* `historico_etapa1_e_etapa2/`: arquivo histórico dos áudios exploratórios originais (`som1` a `som5`) e das figuras geradas nas fases anteriores para fins de documentação do TCC.
+* `resultados/`: figuras e relatórios quantitativos em CSV gerados pelas pipelines.
+* `pipeline_transcritor.py`: pipeline monofônica (onset + pYIN).
+* `avaliar_com_idmt.py`: script de avaliação quantitativa com o dataset IDMT-SMT-GUITAR.
+* `avaliar_com_guitarset.py`: avaliação JAMS/GuitarSet com `mir_eval`.
+* `analise_exploratoria.py`: figuras para o capítulo de análise exploratória.
+* `gerar_espectrograma.py`: visualização da máscara CQT para fins exploratórios.
+* `RELATORIO_TECNICO.md`: fundamentação teórica, limites e protocolo experimental.
 
 ## Como executar
 
-### Dependencias
+### 1. Dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Transcricao monofonica
+### 2. Download do Dataset de Benchmark (IDMT-SMT-GUITAR)
+
+O dataset utilizado para testes com notas isoladas limpas é o **IDMT-SMT-GUITAR** (Fraunhofer IDMT). Como seu tamanho total é grande, ele está configurado no `.gitignore`.
+
+* **Download oficial (Zenodo):** [https://zenodo.org/records/7544110](https://zenodo.org/records/7544110)
+* Após baixar o arquivo compactado (`IDMT-SMT-GUITAR_V2.zip`), descompacte-o na pasta `dataset/` para que o caminho fique:
+  `dataset/IDMT-SMT-GUITAR_V2/`
+
+### 3. Executando o Benchmark Automatizado com o IDMT
+
+Para avaliar automaticamente as notas isoladas e confrontar com o gabarito XML oficial gerando relatório CSV:
 
 ```bash
-python pipeline_transcritor.py audios/som1.wav --visualizar
+python avaliar_com_idmt.py --max 20
 ```
 
-### Analise exploratoria
+### 4. Transcricao Monofonica Manual
+
+Para testar um arquivo individual e ver a tabela de notas com onsets e offsets:
 
 ```bash
-python analise_exploratoria.py audios/som1.wav
+python pipeline_transcritor.py "dataset/IDMT-SMT-GUITAR_V2/dataset1/Fender Strat Clean Neck SC/audio/G53-40100-1111-00001.wav" --visualizar
 ```
 
-### GuitarSet e metricas
-
-Baixe as anotacoes e os audios do
-[GuitarSet no Zenodo](https://zenodo.org/records/3371780) e coloque-os em
-`datasets/guitarset/annotation` e `datasets/guitarset/audio_mono-mic`.
-O modo `solo` e o recomendado para o escopo monofonico:
-
-```bash
-python avaliar_com_guitarset.py --batch --style solo --max-files 10 --salvar-csv resultados/guitarset.csv
-```
-
-Para registrar comparacoes exploratorias de limiar e abertura:
-
-```bash
-python experimentos_morfologia.py audios/som1.wav
-```

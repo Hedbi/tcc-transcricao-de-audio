@@ -2,8 +2,12 @@
 # TCC - Transcrição de Áudio de Guitarra para Tablatura
 # =============================================================================
 
-# Datasets grandes (GuitarSet ~1.6GB)
+# Datasets grandes (não versionar no Git devido ao tamanho de centenas de MB / GB)
 datasets/
+dataset/
+IDMT-SMT-GUITAR*/
+*.zip
+*.tar.gz
 
 # Cache do Python
 __pycache__/
